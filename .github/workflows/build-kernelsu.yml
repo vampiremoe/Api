@@ -1,7 +1,6 @@
 name: Build Ares Kernel with KernelSU Next
 
-on:
-  workflow_dispatch:
+on: workflow_dispatch
 
 jobs:
   build:
@@ -9,51 +8,45 @@ jobs:
     env:
       BOOT_IMG_URL: ${{ secrets.BOOT_IMG_URL }}
     steps:
+      - name: 📥 Download boot.img
+        run: curl -L "$BOOT_IMG_URL" -o boot.img
 
-    - name: 📥 Download boot.img
-      run: curl -L "$BOOT_IMG_URL" -o boot.img
+      - name: 🧰 Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y bc bison build-essential ccache curl flex git libssl-dev \
+            libelf-dev libncurses-dev lzop python3 zip unzip wget
 
-    - name: 🧰 Install dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y bc bison build-essential ccache curl flex git libssl-dev \
-          libelf-dev libncurses-dev lzop python3 zip unzip wget
+      - name: 🧾 Add defconfig
+        run: |
+          mkdir -p kernel/arch/arm64/configs
+          cp defconfig kernel/arch/arm64/configs/ares_defconfig
 
-    - name: 🔍 Extract kernel config
-      run: |
-        curl -O https://raw.githubusercontent.com/torvalds/linux/master/scripts/extract-ikconfig
-        chmod +x extract-ikconfig
-        ./extract-ikconfig boot.img > ares_defconfig
-        head -n 20 ares_defconfig
+      - name: 🧬 Clone kernel source
+        run: |
+          git clone --depth=1 https://github.com/hoangphan-lab/kernel_xiaomi_ares.git kernel
 
-    - name: 🧬 Clone kernel source for ares (MIUITN A13)
-      run: |
-        git clone --depth=1 https://github.com/hoangphan-lab/kernel_xiaomi_ares.git kernel
-        cd kernel
-        mkdir -p arch/arm64/configs
-        mv ../ares_defconfig arch/arm64/configs/ares_defconfig
+      - name: 🌱 Add KernelSU Next
+        run: |
+          cd kernel
+          git clone --depth=1 --branch next https://github.com/tiann/KernelSU.git KernelSU
+          bash KernelSU/setup.sh ./
 
-    - name: 🌱 Add KernelSU Next
-      run: |
-        cd kernel
-        git clone --depth=1 --branch next https://github.com/tiann/KernelSU.git KernelSU
-        bash KernelSU/setup.sh ./
+      - name: 🛠️ Build kernel
+        run: |
+          cd kernel
+          make ARCH=arm64 ares_defconfig
+          make -j$(nproc) ARCH=arm64
 
-    - name: 🛠️ Build kernel
-      run: |
-        cd kernel
-        make ARCH=arm64 ares_defconfig
-        make -j$(nproc) ARCH=arm64
+      - name: 📦 Package into flashable ZIP
+        run: |
+          git clone https://github.com/osm0sis/AnyKernel3.git ak3
+          cp kernel/arch/arm64/boot/Image* ak3/
+          cd ak3
+          zip -r9 ares-kernelsu-next.zip *
 
-    - name: 📦 Package into flashable ZIP
-      run: |
-        git clone https://github.com/osm0sis/AnyKernel3.git ak3
-        cp kernel/arch/arm64/boot/Image* ak3/
-        cd ak3
-        zip -r9 ares-kernelsu-next.zip *
-
-    - name: 📤 Upload flashable kernel
-      uses: actions/upload-artifact@v4
-      with:
-        name: ares-kernelsu-flashable
-        path: ak3/ares-kernelsu-next.zip
+      - name: 📤 Upload flashable kernel
+        uses: actions/upload-artifact@v4
+        with:
+          name: ares-kernelsu-flashable
+          path: ak3/ares-kernelsu-next.zip
