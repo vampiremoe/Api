@@ -53,7 +53,7 @@ jobs:
         zip -r9 ares-kernelsu-next.zip *
 
     - name: 📤 Upload flashable kernel
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ares-kernelsu-flashable
         path: ak3/ares-kernelsu-next.zip
