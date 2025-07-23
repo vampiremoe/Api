@@ -1,8 +1,6 @@
 name: Build Ares Kernel with KernelSU
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -10,46 +8,51 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BOOT_IMG_URL: ${{ secrets.BOOT_IMG_URL }}
-      KERNEL_SU_REPO: https://github.com/tiann/KernelSU
     steps:
-    - name: 🗃️ Download boot.img
+    - name: 📥 Download boot.img
       run: curl -L "$BOOT_IMG_URL" -o boot.img
-    - name: 🛠 Install tools
+
+    - name: 🧰 Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y bc bison build-essential curl flex libelf-dev libncurses-dev git unzip zip
-    - name: Extract kernel config
+        sudo apt install -y bc bison build-essential ccache curl flex git libssl-dev \
+          libelf-dev libncurses-dev lzop python3 zip unzip wget
+
+    - name: 🔍 Extract kernel config
       run: |
         curl -O https://raw.githubusercontent.com/torvalds/linux/master/scripts/extract-ikconfig
         chmod +x extract-ikconfig
         ./extract-ikconfig boot.img > ares_defconfig
-    - name: 📂 Clone kernel source
+        head -n 20 ares_defconfig
+
+    - name: 🧬 Clone kernel source (placeholder)
       run: |
-        git clone --depth=1 https://github.com/RedmiK40Gaming/ares-kernel.git kernel
-        mv ares_defconfig kernel/arch/arm64/configs/ares_defconfig
-    - name: ✅ Kernel configuration
+        git clone --depth=1 https://github.com/tiann/KernelSU_kernel_demo.git kernel
+        cd kernel
+        mkdir -p arch/arm64/configs
+        mv ../ares_defconfig arch/arm64/configs/ares_defconfig
+
+    - name: 🌱 Add KernelSU
       run: |
         cd kernel
-        make O=out ARCH=arm64 ares_defconfig
-    - name: 🔧 Apply KernelSU
+        git clone --depth=1 https://github.com/tiann/KernelSU.git KernelSU
+        bash KernelSU/setup.sh ./
+
+    - name: 🛠️ Build kernel
       run: |
         cd kernel
-        git clone --depth=1 "$KERNEL_SU_REPO" kernelsu
-        # Configure KernelSU as per its docs
-    - name: 🧱 Build kernel
+        make ARCH=arm64 ares_defconfig
+        make -j$(nproc) ARCH=arm64
+
+    - name: 📦 Package into flashable ZIP
       run: |
-        cd kernel
-        export ARCH=arm64
-        export CLANG_PATH=/usr/bin
-        make -j$(nproc) O=out ARCH=arm64 CC=clang
-    - name: 📦 Package with AnyKernel3
-      run: |
-        git clone https://github.com/osm0sis/AnyKernel3 ak3
-        cp kernel/out/arch/arm64/boot/Image.gz-dtb ak3/
+        git clone https://github.com/osm0sis/AnyKernel3.git ak3
+        cp kernel/arch/arm64/boot/Image* ak3/
         cd ak3
-        zip -r Ares-KernelSU.zip *
-    - name: ✅ Upload build artifact
+        zip -r9 ares-kernelsu.zip *
+
+    - name: 📤 Upload built kernel ZIP
       uses: actions/upload-artifact@v3
       with:
-        name: Ares-KernelSU
-        path: ak3/Ares-KernelSU.zip
+        name: ares-kernelsu-flashable
+        path: ak3/ares-kernelsu.zip
